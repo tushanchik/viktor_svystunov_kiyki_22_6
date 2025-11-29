@@ -1,47 +1,150 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:todo/models/task.dart';
-import 'package:todo/pages/task_page.dart';
-import 'package:todo/widgets/module_window.dart';
+import 'package:todo/pages/categories_screen.dart';
 import 'package:todo/widgets/task_list.dart';
+import 'package:todo/widgets/Task/add_task_modal.dart';
+import 'package:todo/widgets/menu/app_menu_button.dart';
+import 'package:todo/widgets/menu/wallpaper_picker.dart';
 
 void main() {
   runApp(const MyApp());
 }
 
-class MyApp extends StatelessWidget {
+class MyApp extends StatefulWidget {
   const MyApp({super.key});
 
   @override
-  Widget build(BuildContext context) {
-    return const MaterialApp(
-      debugShowCheckedModeBanner: false,
-      home: TaskScreen(),
-    );
-  }
+  State<MyApp> createState() => _MyAppState();
 }
 
-class TaskScreen extends StatefulWidget {
-  const TaskScreen({super.key});
-
-  @override
-  State<TaskScreen> createState() => _TaskScreenState();
-}
-
-class _TaskScreenState extends State<TaskScreen> {
-  final List<Task> _tasks = [];
-  Task? _recentlyDeletedTask;
-  int? _recentlyDeletedIndex;
+class _MyAppState extends State<MyApp> {
+  ThemeMode _themeMode = ThemeMode.dark;
+  bool _isLoaded = false;
 
   @override
   void initState() {
     super.initState();
-    _loadTasks();
+    _loadTheme();
   }
 
-  Future<void> _loadTasks() async {
+  Future<void> _loadTheme() async {
     final prefs = await SharedPreferences.getInstance();
+    final savedTheme = prefs.getString('themeMode');
+    setState(() {
+      if (savedTheme == 'light') {
+        _themeMode = ThemeMode.light;
+      } else {
+        _themeMode = ThemeMode.dark;
+      }
+      _isLoaded = true;
+    });
+  }
+
+  Future<void> _toggleTheme() async {
+    final prefs = await SharedPreferences.getInstance();
+    setState(() {
+      _themeMode = _themeMode == ThemeMode.dark
+          ? ThemeMode.light
+          : ThemeMode.dark;
+    });
+    await prefs.setString(
+      'themeMode',
+      _themeMode == ThemeMode.dark ? 'dark' : 'light',
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (!_isLoaded) return const SizedBox();
+
+    return MaterialApp(
+      debugShowCheckedModeBanner: false,
+      title: 'To-Do App',
+      theme: ThemeData(
+        useMaterial3: true,
+        brightness: Brightness.light,
+        colorScheme: ColorScheme.fromSeed(
+          seedColor: const Color(0xFF0D47A1),
+          brightness: Brightness.light,
+        ),
+        scaffoldBackgroundColor: Colors.transparent,
+        cardColor: Colors.white,
+        dialogBackgroundColor: Colors.white,
+        textTheme: GoogleFonts.latoTextTheme(ThemeData.light().textTheme),
+        appBarTheme: const AppBarTheme(
+          backgroundColor: Colors.white70,
+          foregroundColor: Colors.black,
+        ),
+      ),
+      darkTheme: ThemeData(
+        useMaterial3: true,
+        brightness: Brightness.dark,
+        colorScheme: ColorScheme.fromSeed(
+          seedColor: const Color(0xFF0D47A1),
+          brightness: Brightness.dark,
+        ),
+        scaffoldBackgroundColor: Colors.transparent,
+        cardColor: const Color(0xFF1E1E1E),
+        dialogBackgroundColor: const Color(0xFF1E1E1E),
+        textTheme: GoogleFonts.latoTextTheme(ThemeData.dark().textTheme),
+        appBarTheme: const AppBarTheme(
+          backgroundColor: Colors.black54,
+          foregroundColor: Colors.white,
+        ),
+      ),
+      themeMode: _themeMode,
+      home: TabsScreen(onThemeChanged: _toggleTheme),
+    );
+  }
+}
+
+class TabsScreen extends StatefulWidget {
+  final VoidCallback onThemeChanged;
+  const TabsScreen({super.key, required this.onThemeChanged});
+
+  @override
+  State<TabsScreen> createState() => _TabsScreenState();
+}
+
+class _TabsScreenState extends State<TabsScreen> {
+  int _selectedPageIndex = 0;
+  final List<Task> _tasks = [];
+  Task? _recentlyDeletedTask;
+  int? _recentlyDeletedIndex;
+  bool _isCompletedOpen = false;
+  String? _backgroundImage;
+  Color? _backgroundColor = const Color.fromARGB(255, 0, 0, 0);
+
+  final List<String> _wallpaperAssets = [
+    'assets/backgrounds/back1.jpg',
+    'assets/backgrounds/back2.jpg',
+    'assets/backgrounds/back3.jpg',
+    'assets/backgrounds/back4.jpg',
+    'assets/backgrounds/back5.jpg',
+  ];
+
+  final List<Color> _solidColors = [
+    const Color.fromARGB(255, 255, 255, 255),
+    const Color.fromARGB(255, 30, 30, 30),
+    const Color.fromARGB(255, 0, 0, 0),
+    const Color.fromARGB(255, 99, 149, 224),
+    const Color.fromARGB(255, 100, 234, 143),
+    const Color.fromARGB(255, 151, 93, 221),
+    const Color.fromARGB(255, 241, 108, 108),
+  ];
+
+  @override
+  void initState() {
+    super.initState();
+    _loadData();
+  }
+
+  Future<void> _loadData() async {
+    final prefs = await SharedPreferences.getInstance();
+
     final data = prefs.getString('tasks');
     if (data != null) {
       final List<dynamic> jsonList = jsonDecode(data);
@@ -51,6 +154,19 @@ class _TaskScreenState extends State<TaskScreen> {
         _sortTasks();
       });
     }
+
+    final savedImage = prefs.getString('backgroundImage');
+    final savedColor = prefs.getInt('backgroundColor');
+
+    setState(() {
+      if (savedImage != null) {
+        _backgroundImage = savedImage;
+        _backgroundColor = null;
+      } else if (savedColor != null) {
+        _backgroundColor = Color(savedColor);
+        _backgroundImage = null;
+      }
+    });
   }
 
   Future<void> _saveTasks() async {
@@ -59,10 +175,33 @@ class _TaskScreenState extends State<TaskScreen> {
     await prefs.setString('tasks', jsonEncode(jsonList));
   }
 
-  void _addTask(String title, bool isImportant, DateTime? dueDate) {
+  Future<void> _saveWallpaperSettings() async {
+    final prefs = await SharedPreferences.getInstance();
+    if (_backgroundImage != null) {
+      await prefs.setString('backgroundImage', _backgroundImage!);
+      await prefs.remove('backgroundColor');
+    } else if (_backgroundColor != null) {
+      await prefs.setInt('backgroundColor', _backgroundColor!.value);
+      await prefs.remove('backgroundImage');
+    }
+  }
+
+  void _addTask(
+    String title,
+    bool isImportant,
+    DateTime? dueDate,
+    String categoryId,
+  ) {
     if (title.trim().isEmpty) return;
     setState(() {
-      _tasks.add(Task(title: title, isStarred: isImportant, dueDate: dueDate));
+      _tasks.add(
+        Task(
+          title: title,
+          isStarred: isImportant,
+          dueDate: dueDate,
+          categoryId: categoryId,
+        ),
+      );
       _sortTasks();
     });
     _saveTasks();
@@ -87,10 +226,16 @@ class _TaskScreenState extends State<TaskScreen> {
     _saveTasks();
   }
 
-  void _editTask(int index, String newTitle, DateTime? newDate) {
+  void _editTask(
+    int index,
+    String newTitle,
+    DateTime? newDate,
+    String newCategoryId,
+  ) {
     setState(() {
       _tasks[index].title = newTitle;
       _tasks[index].dueDate = newDate;
+      _tasks[index].categoryId = newCategoryId;
       _sortTasks();
     });
     _saveTasks();
@@ -117,30 +262,23 @@ class _TaskScreenState extends State<TaskScreen> {
     _saveTasks();
 
     ScaffoldMessenger.of(context).clearSnackBars();
+
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        backgroundColor: Colors.white,
-        content: Row(
-          children: [
-            const Icon(Icons.delete, color: Colors.black87),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Text(
-                'Task deleted',
-                style: const TextStyle(color: Colors.black, fontSize: 16),
-              ),
-            ),
-          ],
+        content: Text(
+          'Task deleted',
+          style: TextStyle(color: Theme.of(context).colorScheme.onSurface),
         ),
+        backgroundColor: Theme.of(context).cardColor,
         behavior: SnackBarBehavior.floating,
         margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
         action: SnackBarAction(
           label: 'UNDO',
-          textColor: Colors.black,
-          onPressed: () {
-            _undoDelete();
-          },
+          textColor: isDark ? Colors.white : Colors.black,
+          onPressed: _undoDelete,
         ),
       ),
     );
@@ -156,39 +294,127 @@ class _TaskScreenState extends State<TaskScreen> {
     });
   }
 
+  void _selectPage(int index) {
+    setState(() {
+      _selectedPageIndex = index;
+    });
+  }
+
+  void _openAddTaskModal() {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => AddTaskModal(onAdd: _addTask),
+    );
+  }
+
+  void _openWallpaperPicker() {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Theme.of(context).cardColor,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) {
+        return WallpaperPicker(
+          wallpaperAssets: _wallpaperAssets,
+          solidColors: _solidColors,
+          currentImage: _backgroundImage,
+          currentColor: _backgroundColor,
+          onImageSelected: (image) {
+            setState(() {
+              _backgroundImage = image;
+              _backgroundColor = null;
+            });
+            _saveWallpaperSettings();
+          },
+          onColorSelected: (color) {
+            setState(() {
+              _backgroundColor = color;
+              _backgroundImage = null;
+            });
+            _saveWallpaperSettings();
+          },
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      body: Stack(
+    Widget activePage = CategoriesScreen(activeTasks: _tasks);
+    String activePageTitle = 'Categories';
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    if (_selectedPageIndex == 1) {
+      activePageTitle = 'Your Tasks';
+      activePage = Column(
         children: [
-          const TaskPage(),
-          SafeArea(
-            child: Column(
-              children: [
-                const SizedBox(height: 100),
-                Expanded(
-                  child: TaskList(
-                    tasks: _tasks,
-                    onToggle: _toggleTask,
-                    onImportant: _toggleStar,
-                    onDelete: _deleteTask,
-                    onEdit: _editTask,
-                    onUndo: (index, task) {
-                      _undoDelete();
-                    },
-                  ),
-                ),
-                Padding(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 16,
-                    vertical: 20,
-                  ),
-                  child: TaskInputField(onSubmitted: _addTask),
-                ),
-              ],
+          Expanded(
+            child: TaskList(
+              tasks: _tasks,
+              onToggle: _toggleTask,
+              onImportant: _toggleStar,
+              onDelete: _deleteTask,
+              onEdit: _editTask,
+              onUndo: (i, t) => _undoDelete(),
+              isCompletedOpen: _isCompletedOpen,
+              onToggleCompleted: () {
+                setState(() {
+                  _isCompletedOpen = !_isCompletedOpen;
+                });
+              },
             ),
           ),
         ],
+      );
+    }
+
+    return Container(
+      decoration: BoxDecoration(
+        color: _backgroundColor ?? Colors.black,
+        image: _backgroundImage != null
+            ? DecorationImage(
+                image: AssetImage(_backgroundImage!),
+                fit: BoxFit.cover,
+              )
+            : null,
+      ),
+      child: Scaffold(
+        backgroundColor: Colors.transparent,
+        appBar: AppBar(
+          title: Text(activePageTitle),
+          backgroundColor: Theme.of(context).appBarTheme.backgroundColor,
+          foregroundColor: Theme.of(context).appBarTheme.foregroundColor,
+          actions: [
+            AppMenuButton(
+              onWallpaperTap: _openWallpaperPicker,
+              onThemeTap: widget.onThemeChanged,
+            ),
+            if (_selectedPageIndex == 1)
+              IconButton(
+                icon: const Icon(Icons.add),
+                onPressed: _openAddTaskModal,
+              ),
+          ],
+        ),
+        body: activePage,
+        bottomNavigationBar: BottomNavigationBar(
+          onTap: _selectPage,
+          currentIndex: _selectedPageIndex,
+          backgroundColor: isDark ? Colors.black87 : Colors.white70,
+          selectedItemColor: isDark ? Colors.white : Colors.black,
+          unselectedItemColor: isDark ? Colors.white54 : Colors.black54,
+          type: BottomNavigationBarType.fixed,
+          items: const [
+            BottomNavigationBarItem(
+              icon: Icon(Icons.grid_view),
+              label: 'Categories',
+            ),
+            BottomNavigationBarItem(icon: Icon(Icons.list), label: 'Tasks'),
+          ],
+        ),
       ),
     );
   }

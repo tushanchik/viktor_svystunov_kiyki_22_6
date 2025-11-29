@@ -1,7 +1,15 @@
 import 'package:flutter/material.dart';
+import 'package:todo/models/category.dart';
+import 'package:todo/data/categories.dart';
 
 class AddTaskModal extends StatefulWidget {
-  final void Function(String title, bool isImportant, DateTime? dueDate) onAdd;
+  final void Function(
+    String title,
+    bool isImportant,
+    DateTime? dueDate,
+    String categoryId,
+  )
+  onAdd;
 
   const AddTaskModal({super.key, required this.onAdd});
 
@@ -12,13 +20,19 @@ class AddTaskModal extends StatefulWidget {
 class _AddTaskModalState extends State<AddTaskModal> {
   final _controller = TextEditingController();
   DateTime? _dueDate;
+  Category _selectedCategory = availableCategories.last;
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final textColor = isDark ? Colors.white : Colors.black;
+    final inputFill = isDark ? Colors.white10 : Colors.black12;
+
+    return Container(
+      color: Theme.of(context).cardColor,
       padding: EdgeInsets.only(
-        top: 10,
-        bottom: MediaQuery.of(context).viewInsets.bottom + 10,
+        top: 16,
+        bottom: MediaQuery.of(context).viewInsets.bottom + 16,
         left: 20,
         right: 20,
       ),
@@ -27,28 +41,51 @@ class _AddTaskModalState extends State<AddTaskModal> {
         children: [
           TextField(
             controller: _controller,
-            cursorColor: Colors.black,
-            style: const TextStyle(color: Colors.black, fontSize: 18),
+            cursorColor: textColor,
+            style: TextStyle(color: textColor, fontSize: 18),
             decoration: InputDecoration(
               hintText: 'Enter task title',
-              hintStyle: const TextStyle(
-                color: Color.fromARGB(179, 109, 109, 109),
-              ),
+              hintStyle: TextStyle(color: textColor.withOpacity(0.5)),
               filled: true,
-              fillColor: const Color.fromRGBO(255, 255, 255, 0.1),
+              fillColor: inputFill,
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(12),
-                borderSide: const BorderSide(color: Colors.black),
-              ),
-              focusedBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(12),
-                borderSide: const BorderSide(
-                  color: Color.fromARGB(255, 49, 49, 49),
-                  width: 2,
-                ),
+                borderSide: BorderSide.none,
               ),
             ),
           ),
+          const SizedBox(height: 15),
+
+          DropdownButtonFormField<Category>(
+            value: _selectedCategory,
+            dropdownColor: Theme.of(context).cardColor,
+            items: availableCategories.map((category) {
+              return DropdownMenuItem(
+                value: category,
+                child: Row(
+                  children: [
+                    Icon(category.icon, color: category.color),
+                    const SizedBox(width: 10),
+                    Text(category.title, style: TextStyle(color: textColor)),
+                  ],
+                ),
+              );
+            }).toList(),
+            onChanged: (value) {
+              if (value != null) setState(() => _selectedCategory = value);
+            },
+            decoration: InputDecoration(
+              labelText: 'Select Category',
+              labelStyle: TextStyle(color: textColor.withOpacity(0.7)),
+              filled: true,
+              fillColor: inputFill,
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: BorderSide.none,
+              ),
+            ),
+          ),
+
           const SizedBox(height: 15),
 
           Row(
@@ -62,15 +99,17 @@ class _AddTaskModalState extends State<AddTaskModal> {
                     initialDate: _dueDate ?? now,
                     firstDate: now,
                     lastDate: DateTime(2100),
+                    builder: (context, child) {
+                      return Theme(data: Theme.of(context), child: child!);
+                    },
                   );
                   if (picked != null) {
                     setState(() => _dueDate = picked);
                   }
                 },
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.white,
-                  foregroundColor: Colors.black,
-                  side: const BorderSide(color: Colors.black),
+                  backgroundColor: isDark ? Colors.grey[800] : Colors.grey[300],
+                  foregroundColor: textColor,
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(10),
                   ),
@@ -86,14 +125,13 @@ class _AddTaskModalState extends State<AddTaskModal> {
                 onPressed: () {
                   final title = _controller.text.trim();
                   if (title.isNotEmpty) {
-                    widget.onAdd(title, false, _dueDate);
+                    widget.onAdd(title, false, _dueDate, _selectedCategory.id);
                     Navigator.pop(context);
                   }
                 },
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.black,
-                  foregroundColor: Colors.white,
-                  side: const BorderSide(color: Colors.black),
+                  backgroundColor: isDark ? Colors.white : Colors.black,
+                  foregroundColor: isDark ? Colors.black : Colors.white,
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(10),
                   ),

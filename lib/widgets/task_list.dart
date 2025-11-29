@@ -7,8 +7,10 @@ class TaskList extends StatelessWidget {
   final void Function(int) onToggle;
   final void Function(int) onImportant;
   final void Function(int) onDelete;
-  final void Function(int, String, DateTime?) onEdit;
+  final void Function(int, String, DateTime?, String) onEdit;
   final void Function(int, Task) onUndo;
+  final bool isCompletedOpen;
+  final VoidCallback onToggleCompleted;
 
   const TaskList({
     super.key,
@@ -18,6 +20,8 @@ class TaskList extends StatelessWidget {
     required this.onDelete,
     required this.onEdit,
     required this.onUndo,
+    required this.isCompletedOpen,
+    required this.onToggleCompleted,
   });
 
   @override
@@ -31,21 +35,89 @@ class TaskList extends StatelessWidget {
       );
     }
 
-    return ListView.builder(
+    final activeTasks = tasks.where((t) => !t.isDone).toList();
+    final completedTasks = tasks.where((t) => t.isDone).toList();
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    return ListView(
       padding: const EdgeInsets.only(bottom: 100),
-      itemCount: tasks.length,
-      itemBuilder: (context, index) {
-        final task = tasks[index];
-        return TaskCard(
-          task: task,
-          index: index,
-          onToggle: onToggle,
-          onImportant: onImportant,
-          onDelete: onDelete,
-          onEdit: onEdit,
-          onUndo: onUndo,
-        );
-      },
+      children: [
+        ...activeTasks.map((task) {
+          final originalIndex = tasks.indexOf(task);
+          return TaskCard(
+            task: task,
+            index: originalIndex,
+            onToggle: onToggle,
+            onImportant: onImportant,
+            onDelete: onDelete,
+            onEdit: onEdit,
+            onUndo: onUndo,
+          );
+        }),
+
+        if (completedTasks.isNotEmpty) ...[
+          const SizedBox(height: 10),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.start,
+            children: [
+              Padding(
+                padding: const EdgeInsets.only(left: 8.0, right: 8.0),
+                child: Card(
+                  elevation: 0,
+                  margin: EdgeInsets.zero,
+                  color: isDark ? const Color(0xFF2C2C2C) : Colors.grey[300],
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(20),
+                    onTap: onToggleCompleted,
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 8,
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            'Completed (${completedTasks.length})',
+                            style: TextStyle(
+                              color: isDark ? Colors.white : Colors.black,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Icon(
+                            isCompletedOpen
+                                ? Icons.keyboard_arrow_up
+                                : Icons.keyboard_arrow_down,
+                            color: isDark ? Colors.white : Colors.black,
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+
+          if (isCompletedOpen)
+            ...completedTasks.map((task) {
+              final originalIndex = tasks.indexOf(task);
+              return TaskCard(
+                task: task,
+                index: originalIndex,
+                onToggle: onToggle,
+                onImportant: onImportant,
+                onDelete: onDelete,
+                onEdit: onEdit,
+                onUndo: onUndo,
+              );
+            }),
+        ],
+      ],
     );
   }
 }

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:todo/models/task.dart';
 import 'package:todo/widgets/task/edit_task_modal.dart';
 import 'package:intl/intl.dart';
+import 'package:todo/data/categories.dart';
 
 class TaskCard extends StatelessWidget {
   final Task task;
@@ -9,7 +10,7 @@ class TaskCard extends StatelessWidget {
   final void Function(int) onToggle;
   final void Function(int) onImportant;
   final void Function(int) onDelete;
-  final void Function(int, String, DateTime?) onEdit;
+  final void Function(int, String, DateTime?, String) onEdit;
   final void Function(int, Task) onUndo;
 
   const TaskCard({
@@ -30,16 +31,14 @@ class TaskCard extends StatelessWidget {
   void _openEditModal(BuildContext context) {
     showModalBottomSheet(
       context: context,
-      backgroundColor: Colors.white,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
+      backgroundColor: Colors.transparent,
       isScrollControlled: true,
       builder: (_) => EditTaskModal(
         initialTitle: task.title,
         initialDate: task.dueDate,
-        onSave: (newTitle, newDate) {
-          onEdit(index, newTitle, newDate);
+        initialCategoryId: task.categoryId,
+        onSave: (newTitle, newDate, newCategoryId) {
+          onEdit(index, newTitle, newDate, newCategoryId);
         },
       ),
     );
@@ -47,15 +46,23 @@ class TaskCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final category = availableCategories.firstWhere(
+      (cat) => cat.id == task.categoryId,
+      orElse: () => availableCategories.last,
+    );
+
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final mainTextColor = isDark ? Colors.white : Colors.black;
+    final checkBoxColor = isDark ? Colors.white70 : Colors.black54;
+
     return Dismissible(
       key: ValueKey(task.title + task.hashCode.toString()),
       direction: DismissDirection.endToStart,
-
       background: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
         child: Container(
           alignment: Alignment.centerRight,
-          padding: const EdgeInsets.symmetric(horizontal: 20),
+          padding: const EdgeInsets.symmetric(horizontal: 15),
           decoration: BoxDecoration(
             color: Colors.redAccent,
             borderRadius: BorderRadius.circular(12),
@@ -67,8 +74,8 @@ class TaskCard extends StatelessWidget {
         onDelete(index);
       },
       child: Card(
-        margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-        elevation: 2,
+        margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+        elevation: 0,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
         child: InkWell(
           borderRadius: BorderRadius.circular(12),
@@ -83,18 +90,27 @@ class TaskCard extends StatelessWidget {
                     Checkbox(
                       value: task.isDone,
                       onChanged: (_) => onToggle(index),
+                      side: BorderSide(color: checkBoxColor, width: 2),
                     ),
                     Expanded(
                       child: Text(
                         task.title,
                         style: TextStyle(
-                          color: task.isDone ? Colors.grey : Colors.black,
+                          color: task.isDone ? Colors.grey : mainTextColor,
                           decoration: task.isDone
                               ? TextDecoration.lineThrough
                               : TextDecoration.none,
                           fontSize: 18,
                           height: 1.2,
                         ),
+                      ),
+                    ),
+                    Padding(
+                      padding: const EdgeInsets.only(right: 8.0),
+                      child: Icon(
+                        category.icon,
+                        color: category.color,
+                        size: 20,
                       ),
                     ),
                     IconButton(

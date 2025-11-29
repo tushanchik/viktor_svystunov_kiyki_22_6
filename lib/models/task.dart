@@ -3,12 +3,14 @@ class Task {
   bool isDone;
   bool isStarred;
   DateTime? dueDate;
+  String categoryId;
 
   Task({
     required this.title,
     this.isDone = false,
     this.isStarred = false,
     this.dueDate,
+    required this.categoryId,
   });
 
   Map<String, dynamic> toJson() => {
@@ -16,6 +18,7 @@ class Task {
     'isDone': isDone,
     'isStarred': isStarred,
     'dueDate': dueDate?.toIso8601String(),
+    'categoryId': categoryId,
   };
 
   factory Task.fromJson(Map<String, dynamic> json) {
@@ -26,6 +29,7 @@ class Task {
       dueDate: json['dueDate'] != null
           ? DateTime.tryParse(json['dueDate'])
           : null,
+      categoryId: json['categoryId'] ?? 'c4',
     );
   }
 }
