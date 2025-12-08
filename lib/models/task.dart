@@ -1,4 +1,5 @@
 class Task {
+  String id;
   String title;
   bool isDone;
   bool isStarred;
@@ -6,6 +7,7 @@ class Task {
   String categoryId;
 
   Task({
+    required this.id,
     required this.title,
     this.isDone = false,
     this.isStarred = false,
@@ -21,8 +23,9 @@ class Task {
     'categoryId': categoryId,
   };
 
-  factory Task.fromJson(Map<String, dynamic> json) {
+  factory Task.fromJson(Map<String, dynamic> json, String id) {
     return Task(
+      id: id,
       title: json['title'] ?? '',
       isDone: json['isDone'] ?? false,
       isStarred: json['isStarred'] ?? false,

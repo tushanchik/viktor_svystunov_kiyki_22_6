@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:http/http.dart' as http;
 import 'package:todo/models/task.dart';
 import 'package:todo/pages/categories_screen.dart';
 import 'package:todo/widgets/task_list.dart';
@@ -34,11 +35,7 @@ class _MyAppState extends State<MyApp> {
     final prefs = await SharedPreferences.getInstance();
     final savedTheme = prefs.getString('themeMode');
     setState(() {
-      if (savedTheme == 'light') {
-        _themeMode = ThemeMode.light;
-      } else {
-        _themeMode = ThemeMode.dark;
-      }
+      _themeMode = savedTheme == 'light' ? ThemeMode.light : ThemeMode.dark;
       _isLoaded = true;
     });
   }
@@ -110,13 +107,20 @@ class TabsScreen extends StatefulWidget {
 }
 
 class _TabsScreenState extends State<TabsScreen> {
+  final Uri _url = Uri.https(
+    'tasks-2a458-default-rtdb.firebaseio.com',
+    'tasks.json',
+  );
+
   int _selectedPageIndex = 0;
-  final List<Task> _tasks = [];
-  Task? _recentlyDeletedTask;
-  int? _recentlyDeletedIndex;
+  List<Task> _tasks = [];
   bool _isCompletedOpen = false;
+
+  bool _isLoading = true;
+  String? _error;
+
   String? _backgroundImage;
-  Color? _backgroundColor = const Color.fromARGB(255, 0, 0, 0);
+  Color? _backgroundColor = const Color.fromARGB(255, 30, 30, 30);
 
   final List<String> _wallpaperAssets = [
     'assets/backgrounds/back1.jpg',
@@ -127,7 +131,6 @@ class _TabsScreenState extends State<TabsScreen> {
   ];
 
   final List<Color> _solidColors = [
-    const Color.fromARGB(255, 255, 255, 255),
     const Color.fromARGB(255, 30, 30, 30),
     const Color.fromARGB(255, 0, 0, 0),
     const Color.fromARGB(255, 99, 149, 224),
@@ -139,50 +142,48 @@ class _TabsScreenState extends State<TabsScreen> {
   @override
   void initState() {
     super.initState();
-    _loadData();
+    _loadWallpaperSettings();
+    _loadTasks();
   }
 
-  Future<void> _loadData() async {
-    final prefs = await SharedPreferences.getInstance();
-
-    final data = prefs.getString('tasks');
-    if (data != null) {
-      final List<dynamic> jsonList = jsonDecode(data);
-      setState(() {
-        _tasks.clear();
-        _tasks.addAll(jsonList.map((e) => Task.fromJson(e)).toList());
-        _sortTasks();
-      });
-    }
-
-    final savedImage = prefs.getString('backgroundImage');
-    final savedColor = prefs.getInt('backgroundColor');
-
+  Future<void> _loadTasks() async {
     setState(() {
-      if (savedImage != null) {
-        _backgroundImage = savedImage;
-        _backgroundColor = null;
-      } else if (savedColor != null) {
-        _backgroundColor = Color(savedColor);
-        _backgroundImage = null;
-      }
+      _isLoading = true;
+      _error = null;
     });
-  }
 
-  Future<void> _saveTasks() async {
-    final prefs = await SharedPreferences.getInstance();
-    final jsonList = _tasks.map((t) => t.toJson()).toList();
-    await prefs.setString('tasks', jsonEncode(jsonList));
-  }
+    try {
+      final response = await http.get(_url);
 
-  Future<void> _saveWallpaperSettings() async {
-    final prefs = await SharedPreferences.getInstance();
-    if (_backgroundImage != null) {
-      await prefs.setString('backgroundImage', _backgroundImage!);
-      await prefs.remove('backgroundColor');
-    } else if (_backgroundColor != null) {
-      await prefs.setInt('backgroundColor', _backgroundColor!.value);
-      await prefs.remove('backgroundImage');
+      if (response.statusCode == 200) {
+        if (response.body == 'null') {
+          setState(() {
+            _tasks = [];
+            _isLoading = false;
+          });
+          return;
+        }
+
+        final Map<String, dynamic> listData = json.decode(response.body);
+        final List<Task> loadedTasks = [];
+
+        listData.forEach((id, data) {
+          loadedTasks.add(Task.fromJson(data, id));
+        });
+
+        setState(() {
+          _tasks = loadedTasks;
+          _isLoading = false;
+        });
+        _sortTasks();
+      } else {
+        throw Exception('Failed to load data');
+      }
+    } catch (e) {
+      setState(() {
+        _error = 'Something went wrong. Please try again later.';
+        _isLoading = false;
+      });
     }
   }
 
@@ -191,39 +192,140 @@ class _TabsScreenState extends State<TabsScreen> {
     bool isImportant,
     DateTime? dueDate,
     String categoryId,
-  ) {
+  ) async {
     if (title.trim().isEmpty) return;
+
     setState(() {
-      _tasks.add(
-        Task(
-          title: title,
-          isStarred: isImportant,
-          dueDate: dueDate,
-          categoryId: categoryId,
-        ),
-      );
-      _sortTasks();
+      _isLoading = true;
     });
-    _saveTasks();
+
+    try {
+      final response = await http.post(
+        _url,
+        headers: {'Content-Type': 'application/json'},
+        body: json.encode({
+          'title': title,
+          'isDone': false,
+          'isStarred': isImportant,
+          'dueDate': dueDate?.toIso8601String(),
+          'categoryId': categoryId,
+        }),
+      );
+
+      if (response.statusCode == 200) {
+        final Map<String, dynamic> resData = json.decode(response.body);
+
+        setState(() {
+          _tasks.add(
+            Task(
+              id: resData['name'],
+              title: title,
+              isStarred: isImportant,
+              dueDate: dueDate,
+              categoryId: categoryId,
+            ),
+          );
+          _isLoading = false;
+        });
+        _sortTasks();
+      }
+    } catch (e) {
+      setState(() {
+        _error = 'Failed to add task';
+        _isLoading = false;
+      });
+    }
+  }
+
+  void _deleteTask(int index) {
+    final taskToDelete = _tasks[index];
+
+    setState(() {
+      _tasks.removeAt(index);
+    });
+
+    ScaffoldMessenger.of(context).clearSnackBars();
+
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    ScaffoldMessenger.of(context)
+        .showSnackBar(
+          SnackBar(
+            duration: const Duration(seconds: 3),
+            content: Text(
+              'Task deleted',
+              style: TextStyle(color: Theme.of(context).colorScheme.onSurface),
+            ),
+            backgroundColor: Theme.of(context).cardColor,
+            behavior: SnackBarBehavior.floating,
+            margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+            ),
+            action: SnackBarAction(
+              label: 'UNDO',
+              textColor: isDark ? Colors.white : Colors.black,
+              onPressed: () {
+                setState(() {
+                  _tasks.insert(index, taskToDelete);
+                });
+              },
+            ),
+          ),
+        )
+        .closed
+        .then((reason) {
+          if (reason != SnackBarClosedReason.action) {
+            final url = Uri.https(
+              'tasks-2a458-default-rtdb.firebaseio.com',
+              'tasks/${taskToDelete.id}.json',
+            );
+
+            http.delete(url).then((response) {
+              if (response.statusCode >= 400) {}
+            });
+          }
+        });
+  }
+
+  void _updateTask(int index, Map<String, dynamic> updates) async {
+    setState(() {});
+
+    final task = _tasks[index];
+    final url = Uri.https(
+      'tasks-2a458-default-rtdb.firebaseio.com',
+      'tasks/${task.id}.json',
+    );
+
+    try {
+      await http.patch(url, body: json.encode(updates));
+    } catch (e) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Failed to sync changes')));
+    }
   }
 
   void _toggleTask(int index) {
     setState(() {
-      final task = _tasks[index];
-      task.isDone = !task.isDone;
-      if (task.isDone) task.isStarred = false;
+      _tasks[index].isDone = !_tasks[index].isDone;
+      if (_tasks[index].isDone) _tasks[index].isStarred = false;
       _sortTasks();
     });
-    _saveTasks();
+    _updateTask(index, {
+      'isDone': _tasks[index].isDone,
+      'isStarred': _tasks[index].isStarred,
+    });
   }
 
   void _toggleStar(int index) {
     setState(() {
-      final task = _tasks[index];
-      if (!task.isDone) task.isStarred = !task.isStarred;
+      if (!_tasks[index].isDone) {
+        _tasks[index].isStarred = !_tasks[index].isStarred;
+      }
       _sortTasks();
     });
-    _saveTasks();
+    _updateTask(index, {'isStarred': _tasks[index].isStarred});
   }
 
   void _editTask(
@@ -238,50 +340,37 @@ class _TabsScreenState extends State<TabsScreen> {
       _tasks[index].categoryId = newCategoryId;
       _sortTasks();
     });
-    _saveTasks();
-  }
-
-  void _undoDelete() {
-    if (_recentlyDeletedTask != null && _recentlyDeletedIndex != null) {
-      setState(() {
-        _tasks.insert(_recentlyDeletedIndex!, _recentlyDeletedTask!);
-        _sortTasks();
-      });
-      _saveTasks();
-      _recentlyDeletedTask = null;
-      _recentlyDeletedIndex = null;
-    }
-  }
-
-  void _deleteTask(int index) {
-    setState(() {
-      _recentlyDeletedTask = _tasks[index];
-      _recentlyDeletedIndex = index;
-      _tasks.removeAt(index);
+    _updateTask(index, {
+      'title': newTitle,
+      'dueDate': newDate?.toIso8601String(),
+      'categoryId': newCategoryId,
     });
-    _saveTasks();
+  }
 
-    ScaffoldMessenger.of(context).clearSnackBars();
+  Future<void> _loadWallpaperSettings() async {
+    final prefs = await SharedPreferences.getInstance();
+    final savedImage = prefs.getString('backgroundImage');
+    final savedColor = prefs.getInt('backgroundColor');
+    setState(() {
+      if (savedImage != null) {
+        _backgroundImage = savedImage;
+        _backgroundColor = null;
+      } else if (savedColor != null) {
+        _backgroundColor = Color(savedColor);
+        _backgroundImage = null;
+      }
+    });
+  }
 
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          'Task deleted',
-          style: TextStyle(color: Theme.of(context).colorScheme.onSurface),
-        ),
-        backgroundColor: Theme.of(context).cardColor,
-        behavior: SnackBarBehavior.floating,
-        margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-        action: SnackBarAction(
-          label: 'UNDO',
-          textColor: isDark ? Colors.white : Colors.black,
-          onPressed: _undoDelete,
-        ),
-      ),
-    );
+  Future<void> _saveWallpaperSettings() async {
+    final prefs = await SharedPreferences.getInstance();
+    if (_backgroundImage != null) {
+      await prefs.setString('backgroundImage', _backgroundImage!);
+      await prefs.remove('backgroundColor');
+    } else if (_backgroundColor != null) {
+      await prefs.setInt('backgroundColor', _backgroundColor!.value);
+      await prefs.remove('backgroundImage');
+    }
   }
 
   void _sortTasks() {
@@ -349,26 +438,34 @@ class _TabsScreenState extends State<TabsScreen> {
 
     if (_selectedPageIndex == 1) {
       activePageTitle = 'Your Tasks';
-      activePage = Column(
-        children: [
-          Expanded(
-            child: TaskList(
-              tasks: _tasks,
-              onToggle: _toggleTask,
-              onImportant: _toggleStar,
-              onDelete: _deleteTask,
-              onEdit: _editTask,
-              onUndo: (i, t) => _undoDelete(),
-              isCompletedOpen: _isCompletedOpen,
-              onToggleCompleted: () {
-                setState(() {
-                  _isCompletedOpen = !_isCompletedOpen;
-                });
-              },
+      if (_isLoading) {
+        activePage = const Center(child: CircularProgressIndicator());
+      } else if (_error != null) {
+        activePage = Center(
+          child: Text(_error!, style: const TextStyle(color: Colors.red)),
+        );
+      } else {
+        activePage = Column(
+          children: [
+            Expanded(
+              child: TaskList(
+                tasks: _tasks,
+                onToggle: _toggleTask,
+                onImportant: _toggleStar,
+                onDelete: _deleteTask,
+                onEdit: _editTask,
+                onUndo: (i, t) {},
+                isCompletedOpen: _isCompletedOpen,
+                onToggleCompleted: () {
+                  setState(() {
+                    _isCompletedOpen = !_isCompletedOpen;
+                  });
+                },
+              ),
             ),
-          ),
-        ],
-      );
+          ],
+        );
+      }
     }
 
     return Container(
